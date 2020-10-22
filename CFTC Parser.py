@@ -1,60 +1,157 @@
 import urllib.request
 import urllib.parse
+import json
 import pandas as pd
 import re
 
-# function to remove all html tags
+
+class HtmlRetriever:  # retrieves data from the URL
+
+    url = "https://www.cftc.gov/dea/futures/financial_lf.htm"
+
+    def html_content_retriever(self):
+        request = urllib.request.Request(self.url)
+        url_data = urllib.request.urlopen(request)
+        cftc_data = url_data.read().decode('utf-8')
+        cleaner = HtmlCleaner(cftc_data)
+        return cleaner.clean_html()
 
 
-def clean_html(raw_html):
-    remove_tag = re.compile('<.*?>')
-    clear_data = re.sub(remove_tag, '', raw_html)
-    return clear_data
+class HtmlCleaner:  # removes tags from the URL content
+
+    def __init__(self, raw_html):
+        self.raw_html = raw_html
+
+    def clean_html(self):
+        remove_tag = re.compile('<.*?>')
+        clear_data = re.sub(remove_tag, '', self.raw_html)
+        return clear_data
 
 
-url = "https://www.cftc.gov/dea/futures/financial_" \
-      "lf.htm?fbclid=IwAR1z7hGNDOegCiOEhbBDo97lrK" \
-      "tM9gsqRB3loRBa3lmM-q_ELpzYbJGM-00"
+class Parser:   # parses the data
 
-request = urllib.request.Request(url)
-data = urllib.request.urlopen(request)
-cftc_data = data.read().decode('utf-8')
-clean_cftc_data = clean_html(cftc_data)
+    search_pattern = r'[-].*\(.*\)|CFTC Code #\S+\s*\b|Total Traders:\s*\S+|Open Interest is\s*\S+|["].*["]' \
+                     r'|Futures Only Positions as of.*?\d{4}|pageTracker\._trackPageview\(\)' \
+                     r'|.*\(Futures Only\)|_gat\._|Total Change is:\s*\S+|Changes from:.*?\d{4}\b' \
+                     r'|((?<=Updated ).*?\d{4}|.*(?=\s[-] .*\()|[-+]?\d+(?:[,.]\d+)?(?:[,.]\d+)?|[.])'
 
-# regex pattern to search and retrieve data from url
-search_data = [x for x in re.findall(r'[-].*\(.*\)|'  
-                                     r'CFTC Code #\S+\s*\b'
-                                     r'|Total Traders:\s*\S+'
-                                     r'|Open Interest is\s*\S+'
-                                     r'|["].*["]'
-                                     r'|Futures Only Positions as of.*?\d{4}'
-                                     r'|Updated.*?\d{4}|pageTracker\._trackPageview\(\)'
-                                     r'|.*\(Futures Only\)'
-                                     r'|_gat\._|Total Change is:\s*\S+'
-                                     r'|Changes from:.*?\d{4}\b'
-                                     r'|(.*(?=[-] .*\()|[-+]?\d+(?:[,.]\d+)?(?:[,.]\d+)?|[.])', clean_cftc_data) if x]
+    def __init__(self):
+        self.html_content = HtmlRetriever()
 
-# index reference to get needed data on search_data list
-index_reference = [0, 1, 2, 3, 15, 16, 17, 29, 30, 31, 43, 44, 45]
+    def main_parser(self):  # retrieves all the necessary data
+        main_data = [x for x in re.findall(self.search_pattern, self.html_content.html_content_retriever()) if x]
+        return main_data
 
-# list to hold needed data from search_data list
-parsed_data = []
-sub_list = []
+    def long_short_spreading_parser(self, reference):  # retrieves long, short & spreading values from the main parser
+        data = self.main_parser()
+        lookup = reference
+        long_short_spreading_data = []
+        for index, value in enumerate(data):
+            if index == lookup:
+                long_short_spreading_data.append(value)
+                lookup += 55
+        return long_short_spreading_data
 
-# loop to retrieve needed data in search_data list
-for idx, val in enumerate(search_data):
-    if idx in index_reference:
-        sub_list.append(val)
-        if idx == index_reference[12]:
-            index_reference = [x + 55 for x in index_reference]
-            parsed_data.append(sub_list)
-            sub_list = []
+    def currency_parser(self):  # retrieves currency from main parser
+        data = self.main_parser()[:-1]
+        currencies = data[0::55]
+        return currencies
 
-# convert list to DataFrame
-cftc_df = pd.DataFrame(parsed_data, columns=['Currency', 'Position Long', 'Position Short', 'Position Spreading',
-                                             'Change Long', 'Change Short', 'Change Spreading',
-                                             '% Long', '% Short', '%Spreading',
-                                             'No. of Trader Long', 'No. of Trader Short', 'No. of Trader Spreading'])
+    def date_parser(self):  # retrieves date from the main parser
+        data = self.main_parser()
+        date = data[len(data) - 1]
+        match = re.match(r'([a-zA-Z]+) (\d+), (\d{4})', date)
+        month = match.group(1)
+        day = match.group(2)
+        year = match.group(3)
+        month_list = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
 
-# save to csv
-cftc_df.to_csv('CFTC Data.csv', mode='a', index=None)
+        for index, value in enumerate(month_list):
+            if value in month:
+                return str(index + 1) + '-' + day + '-' + year
+
+
+class DictionaryWriter:
+
+    def __init__(self):
+        self.parser = Parser()
+
+    def dictionary_converter(self):  # converts data into dictionary
+
+        outer_key_list = ['Long', 'Short', 'Spreading']
+        inner_key_list = ['Position', 'Changes', 'Percent', 'Number of Traders']
+        currency_key_list = self.parser.currency_parser()
+
+        dct = {x: {'Dealer Intermediary': {y: {z: None for z in inner_key_list}
+                                           for y in outer_key_list}} for x in currency_key_list}
+
+        # insert LONG position, changes, percent, number of trader
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(1)):
+            dct[currency_key]['Dealer Intermediary']['Long']['Position'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(15)):
+            dct[currency_key]['Dealer Intermediary']['Long']['Changes'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(29)):
+            dct[currency_key]['Dealer Intermediary']['Long']['Percent'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(43)):
+            dct[currency_key]['Dealer Intermediary']['Long']['Number of Traders'] = long_data
+
+        # insert Short position, changes, percent, number of trader
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(2)):
+            dct[currency_key]['Dealer Intermediary']['Short']['Position'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(16)):
+            dct[currency_key]['Dealer Intermediary']['Short']['Changes'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(30)):
+            dct[currency_key]['Dealer Intermediary']['Short']['Percent'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(44)):
+            dct[currency_key]['Dealer Intermediary']['Short']['Number of Traders'] = long_data
+
+        # insert Spreading position, changes, percent, number of trader
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(3)):
+            dct[currency_key]['Dealer Intermediary']['Spreading']['Position'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(17)):
+            dct[currency_key]['Dealer Intermediary']['Spreading']['Changes'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(31)):
+            dct[currency_key]['Dealer Intermediary']['Spreading']['Percent'] = long_data
+        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(45)):
+            dct[currency_key]['Dealer Intermediary']['Spreading']['Number of Traders'] = long_data
+
+        return {'report date': self.parser.date_parser(), 'financial report': dct}
+
+
+class Writer:
+
+    def __init__(self):
+        self.parser = Parser()
+        self.html_content = HtmlRetriever()
+        self.dictionary_writer = DictionaryWriter()
+
+    def text_writer(self):  # saves the raw file
+        file_date = self.parser.date_parser()
+        raw_html_data = self.html_content.html_content_retriever()
+        f = open(file_date + ".cot.futures.txt", "w")
+        f.write(raw_html_data)
+        f.close()
+
+    def json_writer(self):  # converts dictionary to JSON and save as JSON
+        file_date = self.parser.date_parser()
+        with open(file_date + '.cot.futures.json', 'w') as dictionary_data:
+            json.dump(self.dictionary_writer.dictionary_converter(), dictionary_data)
+
+    # TODO Fix CSV Format
+    def csv_writer(self):  # converts JSON to CSV
+        file_date = self.parser.date_parser()
+        with open(file_date + '.cot.futures.json', encoding='utf-8-sig') as json_file:
+            json_data = json.load(json_file)
+            df = pd.json_normalize(json_data, max_level=4)
+        df.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
+
+
+file_writer = Writer()
+file_writer.text_writer()
+file_writer.json_writer()
+file_writer.csv_writer()
+
+
+
+
