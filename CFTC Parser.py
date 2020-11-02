@@ -83,40 +83,40 @@ class DictionaryWriter:
         inner_key_list = ['Position', 'Changes', 'Percent', 'Number of Traders']
         currency_key_list = self.parser.currency_parser()
 
-        dct = {x: {'Dealer Intermediary': {y: {z: None for z in inner_key_list}
-                                           for y in outer_key_list}} for x in currency_key_list}
+        dct = {x: [{'Dealer Intermediary': {y: {z: None for z in inner_key_list}
+                                           for y in outer_key_list}}] for x in currency_key_list}
 
         # insert LONG position, changes, percent, number of trader
         for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(1)):
-            dct[currency_key]['Dealer Intermediary']['Long']['Position'] = long_data
+            dct[currency_key][0]['Dealer Intermediary']['Long']['Position'] = long_data
         for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(15)):
-            dct[currency_key]['Dealer Intermediary']['Long']['Changes'] = long_data
+            dct[currency_key][0]['Dealer Intermediary']['Long']['Changes'] = long_data
         for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(29)):
-            dct[currency_key]['Dealer Intermediary']['Long']['Percent'] = long_data
+            dct[currency_key][0]['Dealer Intermediary']['Long']['Percent'] = long_data
         for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(43)):
-            dct[currency_key]['Dealer Intermediary']['Long']['Number of Traders'] = long_data
+            dct[currency_key][0]['Dealer Intermediary']['Long']['Number of Traders'] = long_data
 
         # insert Short position, changes, percent, number of trader
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(2)):
-            dct[currency_key]['Dealer Intermediary']['Short']['Position'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(16)):
-            dct[currency_key]['Dealer Intermediary']['Short']['Changes'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(30)):
-            dct[currency_key]['Dealer Intermediary']['Short']['Percent'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(44)):
-            dct[currency_key]['Dealer Intermediary']['Short']['Number of Traders'] = long_data
+        for currency_key, short_data in zip(currency_key_list, self.parser.long_short_spreading_parser(2)):
+            dct[currency_key][0]['Dealer Intermediary']['Short']['Position'] = short_data
+        for currency_key, short_data in zip(currency_key_list, self.parser.long_short_spreading_parser(16)):
+            dct[currency_key][0]['Dealer Intermediary']['Short']['Changes'] = short_data
+        for currency_key, short_data in zip(currency_key_list, self.parser.long_short_spreading_parser(30)):
+            dct[currency_key][0]['Dealer Intermediary']['Short']['Percent'] = short_data
+        for currency_key, short_data in zip(currency_key_list, self.parser.long_short_spreading_parser(44)):
+            dct[currency_key][0]['Dealer Intermediary']['Short']['Number of Traders'] = short_data
 
         # insert Spreading position, changes, percent, number of trader
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(3)):
-            dct[currency_key]['Dealer Intermediary']['Spreading']['Position'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(17)):
-            dct[currency_key]['Dealer Intermediary']['Spreading']['Changes'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(31)):
-            dct[currency_key]['Dealer Intermediary']['Spreading']['Percent'] = long_data
-        for currency_key, long_data in zip(currency_key_list, self.parser.long_short_spreading_parser(45)):
-            dct[currency_key]['Dealer Intermediary']['Spreading']['Number of Traders'] = long_data
+        for currency_key, spreading_data in zip(currency_key_list, self.parser.long_short_spreading_parser(3)):
+            dct[currency_key][0]['Dealer Intermediary']['Spreading']['Position'] = spreading_data
+        for currency_key, spreading_data in zip(currency_key_list, self.parser.long_short_spreading_parser(17)):
+            dct[currency_key][0]['Dealer Intermediary']['Spreading']['Changes'] = spreading_data
+        for currency_key, spreading_data in zip(currency_key_list, self.parser.long_short_spreading_parser(31)):
+            dct[currency_key][0]['Dealer Intermediary']['Spreading']['Percent'] = spreading_data
+        for currency_key, spreading_data in zip(currency_key_list, self.parser.long_short_spreading_parser(45)):
+            dct[currency_key][0]['Dealer Intermediary']['Spreading']['Number of Traders'] = spreading_data
 
-        return {'report date': self.parser.date_parser(), 'financial report': dct}
+        return {'report date': self.parser.date_parser(), 'financial report': [dct]}
 
 
 class Writer:
@@ -141,10 +141,15 @@ class Writer:
     # TODO Fix CSV Format
     def csv_writer(self):  # converts JSON to CSV
         file_date = self.parser.date_parser()
+        curreny_list = self.parser.currency_parser()
         with open(file_date + '.cot.futures.json', encoding='utf-8-sig') as json_file:
             json_data = json.load(json_file)
-            df = pd.json_normalize(json_data, max_level=4)
-        df.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
+            main_data = pd.DataFrame()
+            for currency in curreny_list:
+                data = pd.json_normalize(json_data, meta=['report date'], record_path=['financial report', currency])
+                main_data = main_data.append(data)
+            main_data.insert(0, 'Currency', curreny_list)
+            main_data.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
 
 
 file_writer = Writer()
