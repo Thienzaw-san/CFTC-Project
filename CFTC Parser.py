@@ -3,6 +3,7 @@ import urllib.parse
 import json
 import pandas as pd
 import re
+import os
 
 
 class HtmlRetriever:  # retrieves data from the URL
@@ -136,7 +137,7 @@ class Writer:
     def json_writer(self):  # converts dictionary to JSON and save as JSON
         file_date = self.parser.date_parser()
         with open(file_date + '.cot.futures.json', 'w') as dictionary_data:
-            json.dump(self.dictionary_writer.dictionary_converter(), dictionary_data)
+            json.dump(self.dictionary_writer.dictionary_converter(), dictionary_data, indent = 4)
 
     def csv_writer(self):  # converts JSON to CSV
         file_date = self.parser.date_parser()
@@ -150,12 +151,17 @@ class Writer:
             main_data.insert(0, 'Currency', currency_list)
             main_data.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
 
+def main():
 
-file_writer = Writer()
-file_writer.text_writer()
-file_writer.json_writer()
-file_writer.csv_writer()
+    output_dir = "output"
 
+    os.makedirs(output_dir, exist_ok = True)
+    os.chdir(output_dir)
 
+    file_writer = Writer()
+    file_writer.text_writer()
+    file_writer.json_writer()
+    file_writer.csv_writer()
 
-
+if __name__ == "__main__":
+    main()
