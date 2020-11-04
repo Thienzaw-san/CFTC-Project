@@ -138,7 +138,6 @@ class Writer:
         with open(file_date + '.cot.futures.json', 'w') as dictionary_data:
             json.dump(self.dictionary_writer.dictionary_converter(), dictionary_data)
 
-    # TODO Fix CSV Format
     def csv_writer(self):  # converts JSON to CSV
         file_date = self.parser.date_parser()
         currency_list = self.parser.currency_parser()
@@ -148,7 +147,7 @@ class Writer:
             for currency in currency_list:
                 data = pd.json_normalize(json_data, meta=['report date'], record_path=['financial report', currency])
                 main_data = main_data.append(data)
-            main_data.insert(0, 'Currency', curreny_list)
+            main_data.insert(0, 'Currency', currency_list)
             main_data.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
 
 
