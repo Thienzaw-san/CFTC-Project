@@ -116,7 +116,7 @@ class DictionaryWriter:
         for currency_key, spreading_data in zip(currency_key_list, self.parser.long_short_spreading_parser(45)):
             dct[currency_key][0]['Dealer Intermediary']['Spreading']['Number of Traders'] = spreading_data
 
-        return {'report date': self.parser.date_parser(), 'financial report': [dct]}
+        return {'report date': self.parser.date_parser(), 'financial report': dct}
 
 
 class Writer:
@@ -141,11 +141,11 @@ class Writer:
     # TODO Fix CSV Format
     def csv_writer(self):  # converts JSON to CSV
         file_date = self.parser.date_parser()
-        curreny_list = self.parser.currency_parser()
+        currency_list = self.parser.currency_parser()
         with open(file_date + '.cot.futures.json', encoding='utf-8-sig') as json_file:
             json_data = json.load(json_file)
             main_data = pd.DataFrame()
-            for currency in curreny_list:
+            for currency in currency_list:
                 data = pd.json_normalize(json_data, meta=['report date'], record_path=['financial report', currency])
                 main_data = main_data.append(data)
             main_data.insert(0, 'Currency', curreny_list)
