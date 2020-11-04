@@ -5,11 +5,14 @@ import pandas as pd
 import re
 import os
 
+from utils import func_name, timeit
+
 
 class HtmlRetriever:  # retrieves data from the URL
 
     url = "https://www.cftc.gov/dea/futures/financial_lf.htm"
 
+    @timeit
     def html_content_retriever(self):
         request = urllib.request.Request(self.url)
         url_data = urllib.request.urlopen(request)
@@ -151,6 +154,7 @@ class Writer:
             main_data.insert(0, 'Currency', currency_list)
             main_data.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
 
+@timeit
 def main():
 
     output_dir = "output"
