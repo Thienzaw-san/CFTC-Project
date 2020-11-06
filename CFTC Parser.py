@@ -4,21 +4,7 @@ import json
 import pandas as pd
 import re
 import os
-
 from utils import func_name, timeit
-
-
-class HtmlRetriever:  # retrieves data from the URL
-
-    url = "https://www.cftc.gov/dea/futures/financial_lf.htm"
-
-    @timeit
-    def html_content_retriever(self):
-        request = urllib.request.Request(self.url)
-        url_data = urllib.request.urlopen(request)
-        cftc_data = url_data.read().decode('utf-8')
-        cleaner = HtmlCleaner(cftc_data)
-        return cleaner.clean_html()
 
 
 class HtmlCleaner:  # removes tags from the URL content
@@ -39,31 +25,30 @@ class Parser:   # parses the data
                      r'|.*\(Futures Only\)|_gat\._|Total Change is:\s*\S+|Changes from:.*?\d{4}\b' \
                      r'|((?<=Updated ).*?\d{4}|.*(?=\s[-] .*\()|[-+]?\d+(?:[,.]\d+)?(?:[,.]\d+)?|[.])'
 
-    def __init__(self):
-        self.html_content = HtmlRetriever()
+    def __init__(self, html_data):
+        self.html_data = html_data
+        self.data = self.main_parser()
+        self.date = self.date_parser()
 
     def main_parser(self):  # retrieves all the necessary data
-        main_data = [x for x in re.findall(self.search_pattern, self.html_content.html_content_retriever()) if x]
+        main_data = [x for x in re.findall(self.search_pattern, self.html_data) if x]
         return main_data
 
     def long_short_spreading_parser(self, reference):  # retrieves long, short & spreading values from the main parser
-        data = self.main_parser()
         lookup = reference
         long_short_spreading_data = []
-        for index, value in enumerate(data):
+        for index, value in enumerate(self.data):
             if index == lookup:
                 long_short_spreading_data.append(value)
                 lookup += 55
         return long_short_spreading_data
 
-    def currency_parser(self):  # retrieves currency from main parser
-        data = self.main_parser()[:-1]
-        currencies = data[0::55]
+    def currency_parser(self):  # retrieves currency from the main parser
+        currencies = self.data[:-1][0::55]
         return currencies
 
     def date_parser(self):  # retrieves date from the main parser
-        data = self.main_parser()
-        date = data[len(data) - 1]
+        date = self.data[len(self.data) - 1]
         match = re.match(r'([a-zA-Z]+) (\d+), (\d{4})', date)
         month = match.group(1)
         day = match.group(2)
@@ -78,8 +63,8 @@ class Parser:   # parses the data
 
 class DictionaryWriter:
 
-    def __init__(self):
-        self.parser = Parser()
+    def __init__(self, data):
+        self.parser = Parser(data)
 
     def dictionary_converter(self):  # converts data into dictionary
 
@@ -125,34 +110,49 @@ class DictionaryWriter:
 
 class Writer:
 
-    def __init__(self):
-        self.parser = Parser()
-        self.html_content = HtmlRetriever()
-        self.dictionary_writer = DictionaryWriter()
+    def __init__(self, html_data, dictionary_data, date):
+        self.html_data = html_data
+        self.dictionary_data = dictionary_data
+        self.date = date
 
     def text_writer(self):  # saves the raw file
-        file_date = self.parser.date_parser()
-        raw_html_data = self.html_content.html_content_retriever()
+        file_date = self.date
+        raw_html_data = self.html_data
         f = open(file_date + ".cot.futures.txt", "w")
         f.write(raw_html_data)
         f.close()
 
     def json_writer(self):  # converts dictionary to JSON and save as JSON
-        file_date = self.parser.date_parser()
+        file_date = self.date
         with open(file_date + '.cot.futures.json', 'w') as dictionary_data:
-            json.dump(self.dictionary_writer.dictionary_converter(), dictionary_data, indent = 4)
+            json.dump(self.dictionary_data, dictionary_data, indent = 4)
 
-    def csv_writer(self):  # converts JSON to CSV
-        file_date = self.parser.date_parser()
-        currency_list = self.parser.currency_parser()
-        with open(file_date + '.cot.futures.json', encoding='utf-8-sig') as json_file:
-            json_data = json.load(json_file)
-            main_data = pd.DataFrame()
+
+class JsonToCsvConverter:
+
+    def __init__(self, json_data, date):
+        self.json_data = json_data
+        self.date = date
+
+    def csv_converter(self):  # converts JSON to CSV
+        currency_list = self.json_data['financial report'].keys()
+        with open(self.date + '.cot.futures.json', encoding='utf-8-sig') as json_file:
+            data = json.load(json_file)
+            main_frame = pd.DataFrame()
             for currency in currency_list:
-                data = pd.json_normalize(json_data, meta=['report date'], record_path=['financial report', currency])
-                main_data = main_data.append(data)
-            main_data.insert(0, 'Currency', currency_list)
-            main_data.to_csv(file_date + '.cot.futures.csv', encoding='utf-8', index=False)
+                json_data = pd.json_normalize(data, meta=['report date'], record_path=['financial report', currency])
+                main_frame = main_frame.append(json_data)
+            main_frame.insert(0, 'Currency', currency_list)
+            main_frame.to_csv(self.date + '.cot.futures.csv', encoding='utf-8', index=False)
+
+
+def html_content_retriever():  # retrieves html data
+    request = urllib.request.Request("https://www.cftc.gov/dea/futures/financial_lf.htm")
+    url_data = urllib.request.urlopen(request)
+    cftc_data = url_data.read().decode('utf-8')
+    cleaner = HtmlCleaner(cftc_data)
+    return cleaner.clean_html()
+
 
 @timeit
 def main():
@@ -162,10 +162,18 @@ def main():
     os.makedirs(output_dir, exist_ok = True)
     os.chdir(output_dir)
 
-    file_writer = Writer()
+    html_data = html_content_retriever()
+    parser = Parser(html_data)
+    dct_writer = DictionaryWriter(html_data)
+    dct_data = dct_writer.dictionary_converter()
+
+    file_writer = Writer(html_data, dct_data, parser.date)
     file_writer.text_writer()
     file_writer.json_writer()
-    file_writer.csv_writer()
+
+    csv_writer = JsonToCsvConverter(dct_data, parser.date)
+    csv_writer.csv_converter()
+
 
 if __name__ == "__main__":
     main()
